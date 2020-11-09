@@ -1,6 +1,7 @@
 import re
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 from collections import Counter
 from sklearn.metrics.pairwise import cosine_similarity
@@ -48,18 +49,23 @@ def clean_corpus(tokenized_corpus, min_frequency=FREQUENCY_THRESHOLD):
 
 def get_dictionary(tokenized_corpus):
     tokens_list = get_token_list(tokenized_corpus)
-    return list(set(tokens_list))
+    tokens = list(set(tokens_list))
+    return {token: tokens.index(token) for token in tokens}
 
 
 def create_dtm(tokenized_corpus):
-    dictionary = get_dictionary(tokenized_corpus)
-    bow_corpus = []
-    for token_list in tokenized_corpus:
-        bow = [0] * len(dictionary)
-        for token in token_list:
-            bow[dictionary.index(token)] += 1
-        bow_corpus.append(bow)
-    return bow_corpus, dictionary
+    indptr = [0]
+    indices = []
+    data = []
+    vocabulary = {}
+    for doc in tokenized_corpus:
+        for token in doc:
+            index = vocabulary.setdefault(token, len(vocabulary))
+            indices.append(index)
+            data.append(1)
+        indptr.append(len(indices))
+
+    return csr_matrix((data, indices, indptr), dtype=int), vocabulary
 
 
 def vectorize_dtm(dtm):
