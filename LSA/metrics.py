@@ -1,5 +1,7 @@
 import numpy as np
 
 
-def precision_at_k(truth: int, prediction: np.ndarray, k=10):
-    return sum(prediction[:k] == truth) / k
+def mean_precision_at_k(truth: np.ndarray, prediction: np.ndarray, k=10):
+    prediction_slice = prediction[:, :k]
+    zero_similar = np.add(prediction_slice.T, -truth)
+    return np.mean(np.count_nonzero(zero_similar == 0, axis=0) / k)

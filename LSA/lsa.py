@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 
 UN_SPACE_PATTERN = re.compile('')
-SPACED_PATTERN = re.compile('-|\.|\@|\s')
+SPACED_PATTERN = re.compile('-|\.|@|\s')
 FREQUENCY_THRESHOLD = 100
 
 
@@ -47,14 +47,8 @@ def clean_corpus(tokenized_corpus, min_frequency=FREQUENCY_THRESHOLD):
     return [[token for token in token_list if token in tokens_to_save] for token_list in tokenized_corpus]
 
 
-def get_dictionary(tokenized_corpus):
-    tokens_list = get_token_list(tokenized_corpus)
-    tokens = list(set(tokens_list))
-    return {token: tokens.index(token) for token in tokens}
-
-
 def create_dtm(tokenized_corpus):
-    indptr = [0]
+    index_pointer = [0]
     indices = []
     data = []
     vocabulary = {}
@@ -63,30 +57,33 @@ def create_dtm(tokenized_corpus):
             index = vocabulary.setdefault(token, len(vocabulary))
             indices.append(index)
             data.append(1)
-        indptr.append(len(indices))
+        index_pointer.append(len(indices))
 
-    return csr_matrix((data, indices, indptr), dtype=int), vocabulary
-
-
-def vectorize_dtm(dtm):
-    words_per_doc = np.sum(dtm, axis=1)
-    word_frequency = np.count_nonzero(dtm, axis=0)
-    number_of_documents = len(dtm)
-    term_frequency = np.array(dtm).T / words_per_doc
-    inverse_document_frequency = np.log(number_of_documents / word_frequency)
-    return term_frequency.T * inverse_document_frequency
+    return csr_matrix((data, indices, index_pointer), dtype=int), vocabulary
 
 
-def lsa(vectorized_dtm, components=300):
-    decompositor = TruncatedSVD(n_components=components)
-    decomposed = decompositor.fit_transform(vectorized_dtm)
-    return decomposed, decompositor.components_
+def tf_idf_transformation(dtm):
+    col_indices = dtm.nonzero[1]
+    term_occurrences = np.array(list(Counter(col_indices).values()))
+    number_of_documents = dtm.shape[0]
+    term_frequency = dtm.multiply(1 / dtm.sum(axis=1))
+    inverse_document_frequency = np.log(number_of_documents / term_occurrences)
+    return term_frequency.multiply(inverse_document_frequency)
 
 
-def most_similar(decomposed_dtm, targets, k=10):
-    results = []
-    for i, document in enumerate(decomposed_dtm):
-        similarity = cosine_similarity(decomposed_dtm, document.reshape(1, -1))
-        most_similar_indexes = similarity.reshape(1, -1)[0].argsort()[-k + 1:-1][::-1]
-        results.append({'truth': targets[i], 'similar_docs': targets[most_similar_indexes]})
-    return pd.DataFrame.from_records(results)
+def lsa(vectorized_dtm, components=300, use_singulars=True):
+    decomposer = TruncatedSVD(n_components=components)
+    decomposed = decomposer.fit_transform(vectorized_dtm)
+    if use_singulars:
+        return decomposed.dot(np.diag(decomposer.singular_values_))
+    return decomposed
+
+
+def most_similar(decomposed_dtm, target, k=10):
+    norm = np.sqrt((decomposed_dtm ** 2).sum(axis=1))
+    normalized = np.multiply(decomposed_dtm.T, 1 / norm)
+    similarities = normalized.T.dot(normalized)
+    np.fill_diagonal(similarities, -1)
+    target_indices = np.argpartition(-similarities, k, axis=0)[:, :k]
+    most_similar_docs = target[target_indices]
+    return most_similar_docs
