@@ -63,7 +63,7 @@ def create_dtm(tokenized_corpus):
 
 
 def tf_idf_transformation(dtm):
-    col_indices = dtm.nonzero[1]
+    col_indices = dtm.nonzero()[1]
     term_occurrences = np.array(list(Counter(col_indices).values()))
     number_of_documents = dtm.shape[0]
     term_frequency = dtm.multiply(1 / dtm.sum(axis=1))
