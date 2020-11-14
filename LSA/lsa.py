@@ -6,7 +6,6 @@ from sklearn.decomposition import TruncatedSVD
 from collections import Counter
 from sklearn.metrics.pairwise import cosine_similarity
 
-
 UN_SPACE_PATTERN = re.compile('')
 SPACED_PATTERN = re.compile('-|\.|@|\s')
 FREQUENCY_THRESHOLD = 100
@@ -68,11 +67,11 @@ def tf_idf_transformation(dtm):
     number_of_documents = dtm.shape[0]
     term_frequency = dtm.multiply(1 / dtm.sum(axis=1))
     inverse_document_frequency = np.log(number_of_documents / term_occurrences)
-    return term_frequency.multiply(inverse_document_frequency)
+    return term_frequency.multiply(inverse_document_frequency).tocsr()
 
 
 def lsa(vectorized_dtm, components=300, use_singulars=True):
-    decomposer = TruncatedSVD(n_components=components)
+    decomposer = TruncatedSVD(n_components=components, random_state=239)
     decomposed = decomposer.fit_transform(vectorized_dtm)
     if use_singulars:
         return decomposed.dot(np.diag(decomposer.singular_values_))
