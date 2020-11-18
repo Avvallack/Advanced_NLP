@@ -1,2 +1,6 @@
 # Project exclude paths
 /venv/
+.idea
+.ipynb_checkpoints
+LSA/.ipynb_checkpoints
+LSA/__pycache__/
