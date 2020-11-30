@@ -1,6 +1,9 @@
 import re
+import pandas as pd
 
+from embedding.configuration import *
 from LSA.lsa import clean_corpus
+
 
 SPACED_PATTERN = re.compile("-|–|\\\\|:|\#|@")
 FREQUENCY_THRESHOLD = 100
@@ -61,3 +64,11 @@ def build_vocab(tags, tokenized_titles, min_frequency=FREQUENCY_THRESHOLD):
     vocabulary = {token: token_list.index(token) for token in token_list}
     return vocabulary
 
+
+def finalize_dataframe(vocab, dataframe, col_tags=TAGS_COL, col_title=TITLE_COL):
+    dataframe = dataframe.copy()
+    dataframe[col_tags] = [[tag for tag in tags if tag in vocab.keys()]
+                           for tags in dataframe[col_tags]]
+    dataframe[col_title] = [[token for token in title if token in vocab.keys()]
+                            for title in dataframe[col_title]]
+    return dataframe
