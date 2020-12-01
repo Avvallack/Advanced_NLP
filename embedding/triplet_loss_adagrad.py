@@ -14,17 +14,18 @@ def loss_function(title, tags_true, tags_wrong):
 
 
 def gradient(title, tags_true, tags_wrong):
-    if loss_function(title, tags_true, tags_wrong) == 0:
+    loss = loss_function(title, tags_true, tags_wrong)
+    if loss == 0:
         return 0
     anchor_derivative = - tags_true + tags_wrong
     positive_derivative = - title
     negative_derivative = title
-    return anchor_derivative, positive_derivative, negative_derivative
+    return loss, [anchor_derivative, positive_derivative, negative_derivative]
 
 
 def get_sum_vector(vector, vocabulary, embedding_matrix):
     vec_indices = [vocabulary[word] for word in vector]
-    return embedding_matrix[vec_indices].sum(axis=0)
+    return embedding_matrix[vec_indices].sum(axis=0), vec_indices
 
 
 def choose_triplet(clean_frame, title_col=TITLE_COL, tags_col=TAGS_COL):
@@ -40,7 +41,7 @@ def choose_triplet(clean_frame, title_col=TITLE_COL, tags_col=TAGS_COL):
     positive = clean_frame.iloc[anchor_index][tags_col]
     negative = clean_frame.iloc[wrong_index][tags_col]
 
-    return anchor, positive, negative
+    return [anchor, positive, negative]
 
 
 def ada_grad(clean_frame,
@@ -50,14 +51,24 @@ def ada_grad(clean_frame,
              num_iterations=10000,
              title_col=TITLE_COL,
              tags_col=TAGS_COL):
-    gradient_matrix = np.zeros((embedding_matrix.shape[1], embedding_matrix.shape[1]))
+    gradient_matrix = np.zeros(embedding_matrix.shape)
     for i in range(num_iterations):
-        anchor, positive, negative = choose_triplet(clean_frame, title_col, tags_col)
-        vec_anchor = get_sum_vector(anchor, vocabulary, embedding_matrix)
-        vec_positive = get_sum_vector(positive, vocabulary, embedding_matrix)
-        vec_negative = get_sum_vector(negative, vocabulary, embedding_matrix)
-        loss = loss_function(vec_anchor, positive, negative)
-        pass
+        triplet = choose_triplet(clean_frame, title_col, tags_col)
+        indices_list = []
+        sum_vectors = []
+        for vector in triplet:
+            sum_vector, indices = get_sum_vector(vector, vocabulary, embedding_matrix)
+            indices_list.append(indices)
+            sum_vectors.append(sum_vector)
+
+        loss, gradient_vector = gradient(*sum_vectors)
+        for grad, index in zip(gradient_vector, indices_list):
+            embedding_matrix[index] -= learning_rate * grad / np.sqrt(gradient_matrix[index] + 0.00000001)
+            gradient_matrix[index] += np.square(grad)
+        if i % 10 == 0:
+            print('Loss on {} iteration = {:.3f}'.format(i, loss))
+
+
 
 
 
