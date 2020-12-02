@@ -4,7 +4,6 @@ import pandas as pd
 from embedding.configuration import *
 from LSA.lsa import clean_corpus
 
-
 SPACED_PATTERN = re.compile("-|–|\\\\|:|\#|@")
 FREQUENCY_THRESHOLD = 100
 
@@ -72,3 +71,14 @@ def finalize_dataframe(vocab, dataframe, col_tags=TAGS_COL, col_title=TITLE_COL)
     dataframe[col_title] = [[token for token in title if token in vocab.keys()]
                             for title in dataframe[col_title]]
     return dataframe
+
+
+def create_index_frame(vocab: dict,
+                       finalized_df: pd.DataFrame,
+                       col_tags: str = TAGS_COL,
+                       col_title: str = TITLE_COL):
+    index_df = pd.DataFrame(columns=finalized_df.columns, index=finalized_df.index)
+    for i, row in finalized_df.iterrows():
+        index_df.loc[i, col_tags] = [vocab[word] for word in row[col_tags]]
+        index_df.loc[i, col_title] = [vocab[word] for word in row[col_title]]
+    return index_df
