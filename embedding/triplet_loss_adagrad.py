@@ -8,7 +8,7 @@ from embedding.configuration import *
 
 
 def initialize_embedding(vocab, dimension=300):
-    return normal(loc=0, scale=0.5, size=(len(vocab), dimension)).astype('Float32')
+    return normal(loc=0, scale=0.005, size=(len(vocab), dimension)).astype('Float32')
 
 
 def loss_function(title, tags_true, tags_wrong):
@@ -18,7 +18,7 @@ def loss_function(title, tags_true, tags_wrong):
 def gradient(title, tags_true, tags_wrong):
     loss = loss_function(title, tags_true, tags_wrong)
     if loss == 0:
-        return 0, None
+        return 0, []
     anchor_derivative = - tags_true + tags_wrong
     positive_derivative = - title
     negative_derivative = title
@@ -49,8 +49,8 @@ def get_title_tags_similarity_matrix(index_frame: pd.DataFrame,
                                      tags_col=TAGS_COL,
                                      title_col=TITLE_COL,
                                      batch_size=10000):
-    title_matrix = np.zeros((batch_size, embedding_matrix.shape[1]))
-    tags_matrix = np.zeros((batch_size, embedding_matrix.shape[1]))
+    title_matrix = np.zeros((batch_size, embedding_matrix.shape[1]), dtype='Float32')
+    tags_matrix = np.zeros((batch_size, embedding_matrix.shape[1]), dtype='Float32')
     indices = choices(index_frame.index, k=batch_size)
     for index, row in index_frame.iloc[indices].reset_index(drop=True).iterrows():
         title_matrix[index] = embedding_matrix[row[title_col]].sum(axis=0)
@@ -59,12 +59,13 @@ def get_title_tags_similarity_matrix(index_frame: pd.DataFrame,
 
 
 def get_most_similar_k(title_tags_matrix, k=10):
-    return np.argpartition(np.multiply(-1, title_tags_matrix), k, axis=1)[:, :10]
+    return np.argpartition(-title_tags_matrix, k, axis=1)[:, :k]
 
 
 def calculate_metric(most_similar_matrix):
-    zeros = np.add(most_similar_matrix.T, np.multiply(-1, np.arange(most_similar_matrix.shape[0])))
-    return np.sum(np.count_nonzero(zeros == 0, axis=0)) / zeros.shape[1]
+    zeros = most_similar_matrix == np.arange(most_similar_matrix.shape[0])[:, None]
+    sums = zeros.sum(axis=1)
+    return sums.mean()
 
 
 def ada_grad(index_frame,
@@ -74,7 +75,7 @@ def ada_grad(index_frame,
              stop_rounds=10,
              tags_col=TAGS_COL,
              title_col=TITLE_COL):
-    gradient_matrix = np.zeros(embedding_matrix.shape, dtype='Float64')
+    gradient_matrix = np.zeros(embedding_matrix.shape, dtype='Float32')
     best_embeddings = embedding_matrix.copy()
     best_metric = 0
     unchanged_rounds = 0
@@ -89,23 +90,24 @@ def ada_grad(index_frame,
                 sum_vectors.append(sum_vector)
 
             loss, gradient_vector = gradient(*sum_vectors)
-            if gradient_vector:
-                for grad, idx in zip(gradient_vector, indices_list):
-                    embedding_matrix[idx] -= np.multiply(np.multiply(learning_rate, grad), 1 / np.sqrt(gradient_matrix[idx] + 0.00000001))
-                    gradient_matrix[idx] += np.square(grad)
+
+            for grad, idx in zip(gradient_vector, indices_list):
+                embedding_matrix[idx] -= np.multiply(np.multiply(learning_rate, grad),
+                                                     1 / np.sqrt(gradient_matrix[idx] + 0.00000001))
+                gradient_matrix[idx] += np.square(grad)
         doc_matrix = get_title_tags_similarity_matrix(index_frame, embedding_matrix, tags_col, title_col)
         most_similar = get_most_similar_k(doc_matrix, k=10)
         metric = calculate_metric(most_similar)
         if metric > best_metric:
-            best_embeddings = embedding_matrix.copy()
+            best_embeddings = embedding_matrix.copy() #np copy to
             best_metric = metric
-            if _ % 10 == 0:
-                print("Current metric is: {:.3f}".format(best_metric))
+            # if _ % 10 == 0:
+            print("Current metric is: {:.5f}".format(best_metric))
         else:
             unchanged_rounds += 1
         if unchanged_rounds >= stop_rounds:
             print("Current metric is: {:.3f}".format(best_metric))
-            return best_embeddings
+            break
     return best_embeddings
 
 
