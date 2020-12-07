@@ -5,10 +5,12 @@ from random import choice, choices
 from tqdm.notebook import tqdm
 
 from embedding.configuration import *
+from embedding.data_load import DATA_FRAME
+from embedding.data_preparation import build_vocab, create_index_frame
 
 
-def initialize_embedding(vocab, dimension=300):
-    return normal(loc=0, scale=0.005, size=(len(vocab), dimension)).astype('Float32')
+def initialize_embedding(vocab, dimension=300, variance=0.01):
+    return normal(loc=0, scale=variance, size=(len(vocab) + 1, dimension)).astype('Float32') + 0.00000001
 
 
 def loss_function(title, tags_true, tags_wrong):
@@ -44,6 +46,10 @@ def get_sum_vector(vector, embedding_matrix):
     return embedding_matrix[vector].sum(axis=0), vector
 
 
+def get_avg_vector(vector, embedding_matrix):
+    return embedding_matrix[vector].mean(axis=0), vector
+
+
 def get_title_tags_similarity_matrix(index_frame: pd.DataFrame,
                                      embedding_matrix: np.ndarray,
                                      tags_col=TAGS_COL,
@@ -68,52 +74,81 @@ def calculate_metric(most_similar_matrix):
     return sums.mean()
 
 
-def ada_grad(index_frame,
-             embedding_matrix,
-             learning_rate=0.01,
-             num_iterations=1000,
-             stop_rounds=10,
-             tags_col=TAGS_COL,
-             title_col=TITLE_COL):
+def gradient_vector_choice(gradient_vector, indeces, vector_type='sum'):
+    if vector_type == 'sum':
+        return gradient_vector
+    if vector_type == 'avg':
+        return gradient_vector / len(indeces)
+    raise ValueError
+
+
+def adagrad_update(gradient_vector, gradient_matrix, index_list):
+    return gradient_matrix[index_list] + np.squre(gradient_vector)
+
+
+def rmsprop_update(gradient_vector, gradient_matrix, index_list, update_gamma=0.95):
+    return update_gamma * gradient_matrix[index_list] + (1 - update_gamma) * np.square(gradient_vector)
+
+
+def train_embeddings(index_frame,
+                     embedding_matrix,
+                     vector_method='sum',
+                     descent_type='adagrad',
+                     learning_rate=0.01,
+                     num_iterations=100,
+                     stop_rounds=15,
+                     tags_col=TAGS_COL,
+                     title_col=TITLE_COL,
+                     update_rate=None):
     gradient_matrix = np.zeros(embedding_matrix.shape, dtype='Float32')
     best_embeddings = embedding_matrix.copy()
     best_metric = 0
     unchanged_rounds = 0
+    if vector_method == 'sum':
+        vector_function = get_sum_vector
+    else:
+        vector_function = get_avg_vector
     for _ in tqdm(range(num_iterations)):
         for index in tqdm(index_frame.index):
             triplet = choose_triplet(index_frame, index, title_col, tags_col)
             indices_list = []
             sum_vectors = []
             for vector in triplet:
-                sum_vector, indices = get_sum_vector(vector, embedding_matrix)
+                sum_vector, indices = vector_function(vector, embedding_matrix)
                 indices_list.append(indices)
                 sum_vectors.append(sum_vector)
 
             loss, gradient_vector = gradient(*sum_vectors)
 
             for grad, idx in zip(gradient_vector, indices_list):
-                embedding_matrix[idx] -= np.multiply(np.multiply(learning_rate, grad),
-                                                     1 / np.sqrt(gradient_matrix[idx] + 0.00000001))
-                gradient_matrix[idx] += np.square(grad)
+                embedding_matrix[idx] -= (learning_rate * grad) / np.sqrt(gradient_matrix[idx] + 0.00000001)
+                grad = gradient_vector_choice(grad, idx, vector_method)
+                if descent_type == 'adagrad':
+                    gradient_matrix[idx] = adagrad_update(learning_rate, grad, gradient_matrix, idx)
+                if descent_type == 'rmsprop' and update_rate:
+                    gradient_matrix[idx] = rmsprop_update(learning_rate, grad, gradient_matrix, idx, update_rate)
+                else:
+                    print('wrong combination')
+                    raise ValueError
         doc_matrix = get_title_tags_similarity_matrix(index_frame, embedding_matrix, tags_col, title_col)
         most_similar = get_most_similar_k(doc_matrix, k=10)
         metric = calculate_metric(most_similar)
         if metric > best_metric:
-            best_embeddings = embedding_matrix.copy() #np copy to
+            np.copyto(embedding_matrix, best_embeddings)
             best_metric = metric
             # if _ % 10 == 0:
             print("Current metric is: {:.5f}".format(best_metric))
         else:
             unchanged_rounds += 1
+            print("Current metric is: {:.5f}".format(best_metric))
         if unchanged_rounds >= stop_rounds:
             print("Current metric is: {:.3f}".format(best_metric))
             break
     return best_embeddings
 
 
-
-
-
-
-
-
+if __name__ == '__main__':
+    vocab = build_vocab(DATA_FRAME['clean_tags'], DATA_FRAME['clean_title'])
+    index_df = create_index_frame(vocab, DATA_FRAME)
+    initial_matrix = initialize_embedding(vocab, dimension=300)
+    trained_embeddings = train_embeddings(index_df, initial_matrix, vector_method='avg', descent_type='rmsprop')
