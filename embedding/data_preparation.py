@@ -5,7 +5,7 @@ from collections import defaultdict
 from embedding.configuration import *
 from LSA.lsa import clean_corpus
 
-SPACED_PATTERN = re.compile("-|–|\\\\|:|\#|@")
+SPACED_PATTERN = re.compile("-|–|\\\\|:|\#|@|\.\s")
 FREQUENCY_THRESHOLD = 100
 
 
@@ -49,30 +49,37 @@ def clean_title(text):
     return process_without_space(text).split()
 
 
-def build_vocab(tags, tokenized_titles, min_frequency=FREQUENCY_THRESHOLD):
+def build_vocab(target, train_exemplars, min_frequency=FREQUENCY_THRESHOLD):
     """
     clean only titles by frequency, cause tags in corpus already cleaned
-    :param tags:
-    :param tokenized_titles:
+    :param target:
+    :param train_exemplars:
     :param min_frequency:
     :return: dict vocabulary of words with indices as items and words as keys
     """
-    tags = set([tag for tag_list in tags for tag in tag_list])
-    titles = clean_corpus(tokenized_titles, min_frequency)
-    title_tokens = set([token for token_list in titles for token in token_list])
-    token_list = list(tags.union(title_tokens))
-    vocabulary = {token: token_list.index(token) for token in token_list}
-    vocabulary.pop('')
-    return vocabulary
+    target_tokens = [token for token_list in target for token in token_list]
+    train_tokens = [token for token_list in train_exemplars for token in token_list]
+    tokens = target_tokens + train_tokens
+    vocabulary = defaultdict(int)
+    for token in tokens:
+        vocabulary[token] += 1
+    clean_vocabulary = defaultdict(int)
+    for key, value in vocabulary.items():
+        if value > min_frequency:
+            clean_vocabulary[key] = len(clean_vocabulary) + 1
+
+    return clean_vocabulary
 
 
-def create_index_frame(vocab: dict,
+def create_index_frame(vocab: defaultdict,
                        dataframe: pd.DataFrame,
-                       col_tags: str = TAGS_COL,
-                       col_title: str = TITLE_COL):
+                       train_col: str = TITLE_COL,
+                       target_col: str = TAGS_COL
+                       ):
+    dataframe = dataframe.reset_index(drop=True)
     index_df = pd.DataFrame(columns=dataframe.columns, index=dataframe.index)
-    vocab = defaultdict(int, vocab)
+
     for i, row in dataframe.iterrows():
-        index_df.loc[i, col_tags] = [vocab[word] for word in row[col_tags]]
-        index_df.loc[i, col_title] = [vocab[word] for word in row[col_title]]
+        index_df.loc[i, target_col] = [vocab[word] for word in row[target_col]]
+        index_df.loc[i, train_col] = [vocab[word] for word in row[train_col]]
     return index_df
