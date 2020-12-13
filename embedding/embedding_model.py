@@ -8,7 +8,7 @@ from embedding.configuration import *
 
 
 def initialize_embedding(vocabulary, dimension=300, variance=0.01):
-    return normal(loc=0, scale=variance, size=(len(vocabulary) + 1, dimension)).astype('Float32') + 0.00000001
+    return normal(loc=0, scale=variance, size=(len(vocabulary) + 1, dimension)).astype(np.float32) + 0.00000001
 
 
 def loss_function(train_vector, truth_target, wrong_target):
@@ -58,8 +58,8 @@ def get_title_tags_similarity_matrix(index_frame: pd.DataFrame,
                                      target_col=TAGS_COL,
                                      batch_size=10000,
                                      vector_type='sum'):
-    title_matrix = np.zeros((batch_size, embedding_matrix.shape[1]), dtype='Float32')
-    tags_matrix = np.zeros((batch_size, embedding_matrix.shape[1]), dtype='Float32')
+    title_matrix = np.zeros((batch_size, embedding_matrix.shape[1]), dtype=np.float32)
+    tags_matrix = np.zeros((batch_size, embedding_matrix.shape[1]), dtype=np.float32)
     indices = choices(index_frame.index, k=batch_size)
     for index, row in index_frame.iloc[indices].reset_index(drop=True).iterrows():
         if vector_type == 'sum':
@@ -109,7 +109,7 @@ def train_embeddings(index_frame,
                      train_col=TITLE_COL,
                      target_col=TAGS_COL,
                      update_rate=None):
-    gradient_matrix = np.zeros(embedding_matrix.shape, dtype='Float32')
+    gradient_matrix = np.zeros(embedding_matrix.shape, dtype=np.float32)
     best_embeddings = embedding_matrix.copy()
     best_metric = 0
     unchanged_rounds = 0

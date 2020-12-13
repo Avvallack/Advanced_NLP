@@ -3,7 +3,7 @@ import pandas as pd
 from collections import defaultdict
 
 from embedding.configuration import *
-from LSA.lsa import clean_corpus
+
 
 SPACED_PATTERN = re.compile("-|–|\\\\|:|\#|@|\.\s")
 FREQUENCY_THRESHOLD = 100
