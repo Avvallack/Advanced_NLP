@@ -18,3 +18,9 @@ TEXT_PATH = 'https://dl.dropboxusercontent.com/s/glz13exvbzprtw3/titles_texts_ha
 TEXT_FRAME = pd.read_csv(TEXT_PATH, index_col=0)
 TEXT_FRAME['clean_title'] = TEXT_FRAME['clean_title'].apply(ast.literal_eval)
 TEXT_FRAME['clean_text'] = TEXT_FRAME['clean_text'].apply(ast.literal_eval)
+TEXT_FRAME['clean_text'] = [token if token else np.nan for token in TEXT_FRAME.clean_text]
+TEXT_FRAME['clean_title'] = [token if token else np.nan for token in TEXT_FRAME.clean_title]
+TEXT_FRAME.dropna(inplace=True)
+TEXT_FRAME.reset_index(drop=True, inplace=True)
+
+SIMPLE_TITLE = DATA_FRAME['clean_title'].apply(lambda x: x[0])

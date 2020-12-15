@@ -49,17 +49,16 @@ def clean_title(text):
     return process_without_space(text).split()
 
 
-def build_vocab(target, train_exemplars, min_frequency=FREQUENCY_THRESHOLD):
+def build_vocab(*args, min_frequency=FREQUENCY_THRESHOLD):
     """
     clean only titles by frequency, cause tags in corpus already cleaned
-    :param target:
-    :param train_exemplars:
     :param min_frequency:
     :return: dict vocabulary of words with indices as items and words as keys
     """
-    target_tokens = [token for token_list in target for token in token_list]
-    train_tokens = [token for token_list in train_exemplars for token in token_list]
-    tokens = target_tokens + train_tokens
+    tokens = []
+    for arg in args:
+        target_tokens = [token for token_list in arg for token in token_list]
+        tokens += target_tokens
     vocabulary = defaultdict(int)
     for token in tokens:
         vocabulary[token] += 1

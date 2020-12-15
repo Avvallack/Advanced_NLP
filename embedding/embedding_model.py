@@ -29,14 +29,9 @@ def get_gradient_norm(gradient_vector):
     return [np.linalg.norm(element) for element in gradient_vector]
 
 
-def choose_triplet(index_frame, anchor_index, train_col=TITLE_COL, target_col=TAGS_COL):
-    in_progress = True
-    while in_progress:
-        wrong_index = choice(index_frame.index)
-        if anchor_index == wrong_index:
-            continue
-        else:
-            in_progress = False
+def choose_triplet(index_frame, anchor_index, wrong_index, train_col=TITLE_COL, target_col=TAGS_COL):
+    """ shuffle index and get cyclic shift for 1 step numpy roll"""
+
     anchor = index_frame.iloc[anchor_index][train_col]
     positive = index_frame.iloc[anchor_index][target_col]
     negative = index_frame.iloc[wrong_index][target_col]
@@ -120,8 +115,11 @@ def train_embeddings(index_frame,
         vector_function = get_avg_vector
     for _ in tqdm(range(num_iterations)):
         epoch_norms = []
-        for index in tqdm(index_frame.index):
-            triplet = choose_triplet(index_frame, index, train_col, target_col)
+        shuffled_index = index_frame.index.values.copy()
+        np.random.shuffle(shuffled_index)
+        shifted_index = np.roll(shuffled_index, 1)
+        for right_idx, wrong_idx in tqdm(zip(shuffled_index, shifted_index)):
+            triplet = choose_triplet(index_frame, right_idx, wrong_idx, train_col, target_col)
             indices_list = []
             sum_vectors = []
             for vector in triplet:
@@ -148,7 +146,6 @@ def train_embeddings(index_frame,
         if metric > best_metric:
             best_embeddings = embedding_matrix.copy()
             best_metric = metric
-            # if _ % 10 == 0:
             print("Current metric is: {:.5f}".format(best_metric))
             unchanged_rounds = 0
         else:
