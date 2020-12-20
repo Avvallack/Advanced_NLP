@@ -81,4 +81,7 @@ def create_index_frame(vocab: defaultdict,
     for i, row in dataframe.iterrows():
         index_df.loc[i, target_col] = [vocab[word] for word in row[target_col]]
         index_df.loc[i, train_col] = [vocab[word] for word in row[train_col]]
+    index_df[target_col] = index_df[target_col].map(lambda x: list(set(x)))
+    index_df[train_col] = index_df[train_col].map(lambda x: list(set(x)))
+    index_df = index_df[(index_df[train_col].map(len) > 1) & (index_df[target_col].map(len) > 1)]
     return index_df
