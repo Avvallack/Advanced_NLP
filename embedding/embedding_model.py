@@ -55,7 +55,7 @@ def get_documents_matrix(dataframe_column, embedding_matrix, vector_type):
     )
     embed_vectors = sparse_col.dot(embedding_matrix)
     if vector_type == 'sum':
-        return
+        return embed_vectors
     return embed_vectors / sparse_col.sum(axis=1)
 
 
@@ -72,12 +72,12 @@ def get_title_tags_similarity_matrix(index_frame: pd.DataFrame,
 
 
 def get_most_similar_k(title_tags_matrix, k=10):
-    return np.argpartition(-title_tags_matrix, k, axis=1)[:, :k]
+    return np.argpartition(-title_tags_matrix, k)[:k, :]
 
 
 def calculate_metric(most_similar_matrix):
-    zeros = most_similar_matrix == np.arange(most_similar_matrix.shape[0])[:, None]
-    return zeros.mean()
+    zeros = (most_similar_matrix == np.arange(most_similar_matrix.shape[1])[None, :]).mean()
+    return zeros
 
 
 def gradient_vector_choice(gradient_vector, indices, vector_type='sum'):
@@ -150,16 +150,15 @@ def train_embeddings(index_frame,
                                                       vector_method)
         most_similar = get_most_similar_k(doc_matrix, k=k)
         metric = calculate_metric(most_similar)
+        print(f"epoch = {_} R@{k} = {100 * metric:.2f}%")
         if metric > best_metric:
             best_embeddings = embedding_matrix.copy()
             best_metric = metric
-            print("Current metric is: {:.5f}".format(best_metric))
             unchanged_rounds = 0
         else:
             unchanged_rounds += 1
-            print("Current metric is: {:.5f}".format(best_metric))
         if unchanged_rounds >= stop_rounds:
-            print("Current metric is: {:.3f}".format(best_metric))
+            print("Best metric is: {:.2f}%".format(best_metric * 100))
             break
     return best_embeddings
 
