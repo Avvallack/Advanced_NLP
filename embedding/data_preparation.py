@@ -64,7 +64,7 @@ def build_vocab(*args, min_frequency=FREQUENCY_THRESHOLD):
         vocabulary[token] += 1
     clean_vocabulary = defaultdict(int)
     for key, value in vocabulary.items():
-        if value > min_frequency:
+        if value > min_frequency and len(key) > 1:
             clean_vocabulary[key] = len(clean_vocabulary) + 1
 
     return clean_vocabulary

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from tqdm.notebook import tqdm
 from scipy.sparse import csr_matrix
+from random import choice
 
 from embedding.configuration import *
 
@@ -28,10 +29,26 @@ def get_gradient_norm(gradient_vector):
     return [np.linalg.norm(element) for element in gradient_vector]
 
 
-def choose_triplet(index_frame, anchor_index, wrong_index, train_col=TITLE_COL, target_col=TAGS_COL):
+def choose_triplet(index_frame, anchor_index, wrong_index,
+                   train_col=TITLE_COL, target_col=TAGS_COL, delete_common=False):
     anchor = index_frame.iloc[anchor_index][train_col]
     positive = index_frame.iloc[anchor_index][target_col]
     negative = index_frame.iloc[wrong_index][target_col]
+    if delete_common:
+        intersection = set(anchor).intersection(positive)
+        if intersection:
+            col = choice(('anchor', 'positive'))
+            if col == 'anchor':
+                if len(anchor) > len(intersection):
+                    anchor = list(set(anchor) - intersection)
+                elif len(positive) > len(intersection):
+                    positive = list(set(positive) - intersection)
+
+            else:
+                if len(positive) > len(intersection):
+                    positive = list(set(positive) - intersection)
+                elif len(anchor) > len(intersection):
+                    anchor = list(set(anchor) - intersection)
 
     return anchor, positive, negative
 
@@ -107,7 +124,8 @@ def train_embeddings(index_frame,
                      target_col=TAGS_COL,
                      update_rate=None,
                      test_size=5000,
-                     k=5):
+                     k=5,
+                     delete_common=False):
     gradient_matrix = np.full_like(embedding_matrix, 1e-8,  dtype=np.float32)
     best_embeddings = embedding_matrix.copy()
     best_metric = 0
@@ -122,7 +140,7 @@ def train_embeddings(index_frame,
         true_idx = np.random.permutation(index_frame.shape[0] - test_size)
         false_idx = np.roll(true_idx, 1)
         for true_index, false_index in zip(true_idx, false_idx):
-            triplet = choose_triplet(index_frame, true_index, false_index, train_col, target_col)
+            triplet = choose_triplet(index_frame, true_index, false_index, train_col, target_col, delete_common)
             indices_list = []
             sum_vectors = []
             for vector in triplet:
