@@ -7,3 +7,4 @@ LSA/__pycache__/
 embedding/__pycache__/
 tags_titles.csv
 texts_titles.csv
+NER/__pycache__/
