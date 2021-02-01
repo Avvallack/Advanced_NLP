@@ -113,4 +113,4 @@ class HMMTagger:
             seq_pred = self.__viterbi(seq_ind)
             seqs = [self.inverse_idx_states[el] for el in seq_pred]
             pred.append(seqs)
-        regit turn pred
+        return pred
