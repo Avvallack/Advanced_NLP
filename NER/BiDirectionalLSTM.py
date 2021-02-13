@@ -3,7 +3,9 @@ import torch
 import torch.nn as nn
 import torch.utils.data as dt
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn.functional as F
 from collections import defaultdict, Counter
+import pytorch_lightning as pl
 
 
 class BiLSTM(nn.Module):
@@ -66,6 +68,43 @@ class NerDataSet(dt.Dataset):
         return np.array([self.tag_vocab[token] for token in tags])
 
 
+class NerNN(pl.LightningModule):
+    def __init__(self, input_size, num_classes, hidden_size=256, embedding_size=128, num_layers=1):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.input_size = input_size
+        self.num_layers = num_layers
+        self.embedding_size = embedding_size
+        self.embedding = nn.Embedding(self.input_size, self.embedding_size, padding_idx=0)
+        self.lstm = nn.LSTM(self.embedding_size,
+                            self.hidden_size,
+                            self.num_layers,
+                            batch_first=True,
+                            bidirectional=True)
+        self.linear = nn.Linear(self.hidden_size * 2, num_classes)
+
+    def forward(self, x):
+        # Set initial states
+        emb = self.embedding(x)
+        lstm_out, self.hidden = self.lstm(emb)
+        y_pred = self.linear(lstm_out)
+
+        return y_pred
+
+    def training_step(self, batch, batch_idx):
+        sent, tags = batch
+        emb = self.embedding(sent)
+        lstm, _ = self.lstm(emb)
+        outputs = self.linear(lstm)
+        loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
+        self.log('train_loss', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
+
+
 def padding(data):
     x, y = zip(*data)
     x = pad_sequence(x, batch_first=True)
@@ -73,5 +112,5 @@ def padding(data):
     return x, y
 
 
-def padded_data_loader(data, batch_size=32):
-    return dt.DataLoader(dataset=data, batch_size=batch_size, collate_fn=padding)
+def padded_data_loader(data, workers, batch_size=32):
+    return dt.DataLoader(dataset=data, batch_size=batch_size, collate_fn=padding, num_workers=workers)
