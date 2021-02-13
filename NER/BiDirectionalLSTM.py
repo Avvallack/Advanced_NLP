@@ -7,13 +7,12 @@ from collections import defaultdict, Counter
 
 
 class BiLSTM(nn.Module):
-    def __init__(self, input_size, num_classes, hidden_size=128, embedding_size=128, num_layers=1, device='cpu'):
+    def __init__(self, input_size, num_classes, hidden_size=128, embedding_size=128, num_layers=1):
         super(BiLSTM, self).__init__()
         self.hidden_size = hidden_size
         self.input_size = input_size
         self.num_layers = num_layers
         self.embedding_size = embedding_size
-        self.device = device
         self.embedding = nn.Embedding(self.input_size, self.embedding_size, padding_idx=0)
         self.lstm = nn.LSTM(self.embedding_size,
                             self.hidden_size,
@@ -24,10 +23,8 @@ class BiLSTM(nn.Module):
 
     def forward(self, x):
         # Set initial states
-        h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(self.device)  # 2 for bidirectional
-        c0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size).to(self.device)
         emb = self.embedding(x)
-        lstm_out, self.hidden = self.lstm(emb, (h0, c0))
+        lstm_out, self.hidden = self.lstm(emb)
         y_pred = self.linear(lstm_out)
 
         return y_pred
