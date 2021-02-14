@@ -6,6 +6,8 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 from collections import defaultdict, Counter
 import pytorch_lightning as pl
+from sklearn.metrics import confusion_matrix
+from collections import OrderedDict
 
 
 class BiLSTM(nn.Module):
@@ -74,6 +76,7 @@ class NerNN(pl.LightningModule):
         self.hidden_size = hidden_size
         self.input_size = input_size
         self.num_layers = num_layers
+        self.num_classes = num_classes
         self.embedding_size = embedding_size
         self.embedding = nn.Embedding(self.input_size, self.embedding_size, padding_idx=0)
         self.lstm = nn.LSTM(self.embedding_size,
@@ -82,6 +85,7 @@ class NerNN(pl.LightningModule):
                             batch_first=True,
                             bidirectional=True)
         self.linear = nn.Linear(self.hidden_size * 2, num_classes)
+        self.f1_metric = pl.metrics.F1(num_classes=self.num_classes, average='macro', )
 
     def forward(self, x):
         # Set initial states
@@ -93,12 +97,27 @@ class NerNN(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         sent, tags = batch
-        emb = self.embedding(sent)
-        lstm, _ = self.lstm(emb)
-        outputs = self.linear(lstm)
+
+        outputs = self.forward(sent)
         loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
         self.log('train_loss', loss)
         return loss
+
+    def validation_step(self, data_batch, batch_nb):
+        sen, tags = data_batch
+        outputs = self.forward(sen)
+        loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
+        tag_mask = tags != 0
+        predicted = outputs.argmax(2)
+        f1_score = self.f1_metric(predicted[tag_mask], tags[tag_mask])
+        self.log('val_loss', loss_val)
+        self.log('val_macro_f1', f1_score)
+
+        output = OrderedDict({
+            'val_loss': loss_val,
+            'val_f1': f1_score,
+        })
+        return output
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
