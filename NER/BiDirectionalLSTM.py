@@ -6,7 +6,6 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 from collections import defaultdict, Counter
 import pytorch_lightning as pl
-from sklearn.metrics import confusion_matrix
 from collections import OrderedDict
 
 
@@ -64,14 +63,14 @@ class NerDataSet(dt.Dataset):
             self.tag_vocab[token] = len(self.tag_vocab)
 
     def __replace_with_index(self, text):
-        return np.array([self.vocab[token.lower()] for token in text])
+        return np.array([self.vocab[token.lower()] for token in text], dtype='int64')
 
     def __replace_with_tag_index(self, tags):
-        return np.array([self.tag_vocab[token] for token in tags])
+        return np.array([self.tag_vocab[token] for token in tags], dtype='int64')
 
 
 class NerNN(pl.LightningModule):
-    def __init__(self, input_size, num_classes, hidden_size=256, embedding_size=128, num_layers=1):
+    def __init__(self, input_size, num_classes, hidden_size=256, embedding_size=128, num_layers=1, dropout=None):
         super().__init__()
         self.hidden_size = hidden_size
         self.input_size = input_size
@@ -83,7 +82,8 @@ class NerNN(pl.LightningModule):
                             self.hidden_size,
                             self.num_layers,
                             batch_first=True,
-                            bidirectional=True)
+                            bidirectional=True,
+                            dropout=dropout)
         self.linear = nn.Linear(self.hidden_size * 2, num_classes)
         self.f1_metric = pl.metrics.F1(num_classes=self.num_classes, average='macro', )
 
@@ -107,9 +107,9 @@ class NerNN(pl.LightningModule):
         sen, tags = data_batch
         outputs = self.forward(sen)
         loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
-        tag_mask = tags != 0
+        # tag_mask = tags != 0
         predicted = outputs.argmax(2)
-        f1_score = self.f1_metric(predicted[tag_mask], tags[tag_mask])
+        f1_score = self.f1_metric(predicted, tags)
         self.log('val_loss', loss_val)
         self.log('val_macro_f1', f1_score)
 
@@ -120,7 +120,7 @@ class NerNN(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return optimizer
 
 

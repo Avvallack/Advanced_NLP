@@ -7,7 +7,7 @@ class HMMTagger:
         :param states: array with unique hidden states (list)
         :param observations: array with unique observations (list)
         """
-        # add 'Unk' to handle unkown tokens
+        # add 'Unk' to handle unknown tokens
         self.states = states
         self.observations = [*observations, 'Unk']
         self.states_num = len(self.states)
@@ -77,7 +77,7 @@ class HMMTagger:
                 tphimax = -1.0
                 for i in range(self.states_num):
                     tphi_tmp = delta[-1][i] * self.transition_matrix[i, j]
-                    if (tphi_tmp > tphimax):
+                    if tphi_tmp > tphimax:
                         tphimax = tphi_tmp
                         phi_t[j] = i
                     tdelta[i] = tphi_tmp * self.emission_matrix[j, obs]
