@@ -4,7 +4,7 @@ from tqdm.notebook import tqdm
 from scipy.sparse import csr_matrix
 from random import choice
 
-from embedding.configuration import *
+from configuration import *
 
 
 def initialize_embedding(vocabulary, dimension=300):

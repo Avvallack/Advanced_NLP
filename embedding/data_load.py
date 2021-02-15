@@ -2,7 +2,7 @@ import pandas as pd
 import ast
 import numpy as np
 
-from embedding.data_preparation import clean_title
+from data_preparation import clean_title
 
 
 PATH = 'https://dl.dropboxusercontent.com/s/5qz8lb8nbp4dk0p/title_tags.csv?dl=0'

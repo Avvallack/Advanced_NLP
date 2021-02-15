@@ -2,7 +2,7 @@ import re
 import pandas as pd
 from collections import defaultdict
 
-from embedding.configuration import *
+from configuration import *
 
 
 SPACED_PATTERN = re.compile("-|–|\\\\|:|\#|@|\.\s")

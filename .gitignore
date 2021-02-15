@@ -5,7 +5,7 @@
 LSA/.ipynb_checkpoints
 LSA/__pycache__/
 embedding/__pycache__/
-tags_titles.csv
-texts_titles.csv
+embedding/tags_titles.csv
+embedding/texts_titles.csv
 NER/__pycache__/
 NER/lightning_logs
