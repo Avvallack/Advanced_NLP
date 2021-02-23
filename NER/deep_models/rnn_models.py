@@ -5,6 +5,8 @@ import pytorch_lightning as pl
 from collections import OrderedDict
 from argparse import ArgumentParser
 
+from crf_layer import CRF
+
 
 class BiLSTM(nn.Module):
     def __init__(self, input_size, num_classes, hidden_size=128, embedding_size=128, num_layers=1):
@@ -41,7 +43,7 @@ class NerRNN(pl.LightningModule):
         parser.add_argument("--adam_beta1", type=float, default=0.95)
         parser.add_argument("--adam_beta2", type=float, default=0.99)
         parser.add_argument("--rnn_type", type=str, default='lstm')
-        parser.add_argument("--crf", type=bool, default=False)
+        parser.add_argument("--use_crf", type=bool, default=False)
         parser.add_argument("--dropout", type=float, default=0.0)
         parser.add_argument("--hidden_size", type=int, default=256)
         parser.add_argument("--embedding_size", type=int, default=128)
@@ -55,7 +57,7 @@ class NerRNN(pl.LightningModule):
         self.hidden_size = vars['hidden_size']
         self.embedding_size = vars['embedding_size']
         self.drop = vars['dropout']
-        self.crf = vars['crf']
+        self.use_crf = vars['use_crf']
 
     def __init__(self, input_size, num_classes, **kwargs):
         super().__init__()
@@ -82,8 +84,9 @@ class NerRNN(pl.LightningModule):
             self.cnn = nn.Sequential(*self.cnn_list)
         elif self.rnn_type == 'qrnn':
             raise NotImplementedError("Isn't implemented yet")
-        if self.crf:
-            raise NotImplementedError("Isn't implemented yet")
+        if self.use_crf:
+            self.linear = nn.Linear(self.hidden_size * 2, self.num_classes + 2)
+            self.crf = CRF(self.num_classes)
         else:
             self.linear = nn.Linear(self.hidden_size * 2, self.num_classes)
 
@@ -98,7 +101,11 @@ class NerRNN(pl.LightningModule):
         elif self.rnn_type == 'cnn':
             to_cnn = torch.tanh(self.word2cnn(emb)).transpose(2, 1).contiguous()
             output = self.cnn(to_cnn).transpose(1, 2).contiguous()
-        y_pred = self.linear(output)
+        if self.use_crf:
+            x_mask = x.eq(0).eq(0)
+            scores, y_pred = self.crf._viterbi_decode(output, x_mask)
+        else:
+            y_pred = self.linear(output)
 
         return y_pred
 
@@ -106,7 +113,11 @@ class NerRNN(pl.LightningModule):
         sent, tags = batch
 
         outputs = self.forward(sent)
-        loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
+        if self.use_crf:
+            mask_sent = sent.eq(0).eq(0)
+            loss = self.crf.neg_log_likelihood_loss(outputs, mask_sent, tags)
+        else:
+            loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
         self.log('train_loss', loss)
         return loss
 

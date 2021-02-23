@@ -36,7 +36,7 @@ class CRF(nn.Module):
         init_transitions[:, START_TAG] = -10000.0
         init_transitions[STOP_TAG, :] = -10000.0
         init_transitions[:, 0] = -10000.0
-        init_transitions[0, :] = -10000.0
+        init_transitions[-1, :] = -10000.0
 
         self.transitions = nn.Parameter(init_transitions)
 
