@@ -8,5 +8,4 @@ embedding/__pycache__/
 embedding/tags_titles.csv
 embedding/texts_titles.csv
 NER/__pycache__/
-NER/lightning_logs
-NER/tb_logs
+NER/deep_models/lightning_logs
