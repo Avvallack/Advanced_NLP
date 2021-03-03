@@ -49,19 +49,11 @@ class NerRNN(pl.LightningModule):
         parser.add_argument("--embedding_size", type=int, default=128)
         return parser
 
-    def save_model_params(self, input_size, num_classes, **vars):
-        self.input_size = input_size
-        self.num_classes = num_classes
-        self.num_layers = vars['num_layers']
-        self.rnn_type = vars['rnn_type']
-        self.hidden_size = vars['hidden_size']
-        self.embedding_size = vars['embedding_size']
-        self.drop = vars['dropout']
-        self.use_crf = vars['use_crf']
-
     def __init__(self, input_size, num_classes, **kwargs):
         super().__init__()
-        self.save_model_params(input_size, num_classes, **kwargs)
+        self.save_hyperparameters()
+        self.input_size = input_size
+        self.num_classes = num_classes
         assert self.rnn_type in ['lstm', 'qrnn', 'cnn'], 'RNN type is not supported'
 
         self.embedding = nn.Embedding(self.input_size, self.embedding_size, padding_idx=0)
@@ -128,13 +120,12 @@ class NerRNN(pl.LightningModule):
         mask = tags.eq(0).eq(0)
         predicted = outputs.argmax(2)
         f1_score = self.f1_metric(predicted[mask], tags[mask])
-        self.log('val_loss', loss_val)
-        self.log('val_macro_f1', f1_score)
 
         output = OrderedDict({
             'val_loss': loss_val,
             'val_f1': f1_score,
         })
+        self.log_dict(output)
         return output
 
     def configure_optimizers(self):
