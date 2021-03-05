@@ -7,50 +7,37 @@ from torch.nn import functional as F
 class MultiHeadAttention(nn.Module):
     def __init__(self, model_dimension, num_heads=1, dropout=0.0):
         super().__init__()
-        assert model_dimension % num_heads == 0, "Input dimension isn't divisible by number of heads"
         self.num_heads = num_heads
 
-        self.query = nn.Linear(model_dimension, model_dimension)
-        self.keys = nn.Linear(model_dimension, model_dimension)
-        self.values = nn.Linear(model_dimension, model_dimension)
         self.dropout = nn.Dropout(dropout)
-        self.outputs = nn.Linear(model_dimension, model_dimension)
+        self.q = nn.Linear(model_dimension, model_dimension * num_heads)
+        self.k = nn.Linear(model_dimension, model_dimension * num_heads)
+        self.v = nn.Linear(model_dimension, model_dimension * num_heads)
+        self.outputs = nn.Linear(model_dimension * num_heads, model_dimension)
 
     @staticmethod
-    def attention(k: torch.Tensor, q: torch.Tensor, v: torch.Tensor, mask=None, dropout=None):
-        dim_k = q.size()[-1]
-        score = torch.matmul(q, k.transpose(1, 2)) / np.sqrt(dim_k)
-        if mask is not None:
-            score = score.masked_fill(mask == 0, -1e9)
+    def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, dropout=None, num_heads=1):
+        seq_len, bsz, embedding_dim, = q.size()
+        head_dim = embedding_dim // num_heads
+
+        q = q.contiguous().view(seq_len, bsz * num_heads, head_dim).transpose(0, 1)
+        k = k.contiguous().view(-1, bsz * num_heads, head_dim).transpose(0, 1)
+        v = v.contiguous().view(-1, bsz * num_heads, head_dim).transpose(0, 1)
+
+        score = torch.bmm(q, k.transpose(1, 2)) / np.sqrt(head_dim)
+
         if dropout is not None:
             score = dropout(score)
-        score = torch.matmul(F.softmax(score, dim=-1), v)
-
+        score = torch.bmm(F.softmax(score, dim=-1), v)
+        score = score.transpose(0, 1).contiguous().view(seq_len, bsz, embedding_dim)
         return score
 
-    def _split_to_heads(self, x):
-        batch_size, seq_len, in_feature = x.size()
-        sub_dim = in_feature // self.num_heads
-        return x.reshape(batch_size, seq_len, self.num_heads, sub_dim).permute(0, 2, 1, 3) \
-            .reshape(batch_size * self.num_heads, seq_len, sub_dim)
-
-    def _reshape_from_heads(self, x):
-        batch_size, seq_len, in_feature = x.size()
-        batch_size //= self.num_heads
-        out_dim = in_feature * self.num_heads
-        return x.reshape(batch_size, self.num_heads, seq_len, in_feature) \
-            .permute(0, 2, 1, 3) \
-            .reshape(batch_size, seq_len, out_dim)
-
-    def forward(self, k, q, v, mask=None):
-        q, k, v = self.query(q), self.keys(k), self.values(v)
-        q = self._split_to_heads(q)
-        k = self._split_to_heads(k)
-        v = self._split_to_heads(v)
-        if mask is not None:
-            mask = mask.repeat(self.num_heads, 1, 1)
-        y = self.attention(k, q, v, mask, self.dropout)
-        y = self._reshape_from_heads(y)
+    def forward(self, x):
+        q = self.q(x).contiguous().transpose(0, 1)
+        k = self.k(x).contiguous().transpose(0, 1)
+        v = self.v(x).contiguous().transpose(0, 1)
+        y = self.attention(q, k, v, self.dropout, self.num_heads)
+        y = y.contiguous().transpose(0, 1)
         y = self.outputs(y)
         return y
 
@@ -69,16 +56,20 @@ class FeedForward(nn.Module):
         return x
 
 
-class Normalization(nn.Module):
-    def __init__(self, model_dim, eps=1e-8):
-        super().__init__()
+class PositionalEncoding(nn.Module):
 
-        self.size = model_dim
-        self.alpha = nn.Parameter(torch.ones(self.size))
-        self.bias = nn.Parameter(torch.zeros(self.size))
-        self.eps = eps
+    def __init__(self, d_model, dropout=0.1, max_len=200):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
 
     def forward(self, x):
-        norm = self.alpha * (x - x.mean(dim=-1, keepdim=True)) \
-               / (x.std(dim=-1, keepdim=True) + self.eps) + self.bias
-        return norm
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
