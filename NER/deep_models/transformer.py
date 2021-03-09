@@ -5,7 +5,7 @@ from collections import OrderedDict
 from argparse import ArgumentParser
 from torch import nn
 from torch.nn import functional as F
-from deep_models.attention_layer import MultiHeadAttention, FeedForward, PositionalEncoding
+from attention_layer import MultiHeadAttention, FeedForward, PositionalEncoding
 
 
 def get_clones(module, num_layers):
@@ -37,18 +37,15 @@ class EncoderLayer(nn.Module):
 class NERTransformer(pl.LightningModule):
     def __init__(self, vocab_size, num_classes, **kwargs):
         super(NERTransformer, self).__init__()
+        self.save_hyperparameters()
         self.vocab_size = vocab_size
         self.num_classes = num_classes
-        self.model_dim = kwargs['model_dim']
-        self.num_heads = kwargs['num_heads']
-        self.num_layers = kwargs['num_layers']
-        self.dropout = kwargs['dropout']
-        self.embedding = nn.Embedding(vocab_size, self.model_dim)
-        self.pos_enc = PositionalEncoding(self.model_dim, self.dropout)
-        self.layers = get_clones(EncoderLayer(self.model_dim, self.num_heads, self.dropout),
-                                 self.num_layers)
-        self.norm = nn.LayerNorm(self.model_dim)
-        self.linear = nn.Linear(self.model_dim, num_classes)
+
+        self.pos_enc = PositionalEncoding(self.hparams.model_dim, self.hparams.dropout)
+        self.layers = get_clones(EncoderLayer(self.hparams.model_dim, self.hparams.num_heads, self.hparams.dropout),
+                                 self.hparams.num_layers)
+        self.norm = nn.LayerNorm(self.hparams.model_dim)
+        self.linear = nn.Linear(self.hparams.model_dim, num_classes)
         self.f1_metric = pl.metrics.F1(num_classes=self.num_classes, average='macro', )
 
     def forward(self, x):
@@ -61,18 +58,17 @@ class NERTransformer(pl.LightningModule):
         output = self.linear(norm_embedding)
         return output
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, pad_index=0):
         sent, tags = batch
         outputs = self.forward(sent)
-        loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
+        loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=pad_index)
         self.log('train_loss', loss)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, pad_index=0):
         sent, tags = batch
         outputs = self.forward(sent)
-        loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
-
+        loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=pad_index)
         mask = tags.eq(0).eq(0)
         predicted = outputs.argmax(2)
         f1_score = self.f1_metric(predicted[mask], tags[mask])
@@ -85,7 +81,12 @@ class NERTransformer(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters())
+        optimizer = torch.optim.AdamW(self.parameters(),
+                                      lr=self.hparams.learning_rate,
+                                      betas=(self.hparams.adam_beta1, self.hparams.adam_beta2),
+                                      eps=self.hparams.adam_eps,
+                                      weight_decay=self.hparams.weight_decay,
+                                      )
         return optimizer
 
     @staticmethod

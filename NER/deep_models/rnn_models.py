@@ -4,8 +4,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from collections import OrderedDict
 from argparse import ArgumentParser
-
-from crf_layer import CRF
+from allennlp.modules import ConditionalRandomField
 
 
 class BiLSTM(nn.Module):
@@ -54,33 +53,36 @@ class NerRNN(pl.LightningModule):
         self.save_hyperparameters()
         self.input_size = input_size
         self.num_classes = num_classes
-        assert self.rnn_type in ['lstm', 'qrnn', 'cnn'], 'RNN type is not supported'
+        assert self.hparams.rnn_type in ['lstm', 'qrnn', 'cnn'], 'RNN type is not supported'
 
-        self.embedding = nn.Embedding(self.input_size, self.embedding_size, padding_idx=0)
-        self.dropout = nn.Dropout(self.drop)
-        if self.rnn_type == 'lstm':
-            self.lstm = nn.LSTM(self.embedding_size,
-                                self.hidden_size,
-                                self.num_layers,
+        self.embedding = nn.Embedding(self.input_size, self.hparams.embedding_size, padding_idx=0)
+        self.dropout = nn.Dropout(self.hparams.dropout)
+        if self.hparams.rnn_type == 'lstm':
+            self.lstm = nn.LSTM(self.hparams.embedding_size,
+                                self.hparams.hidden_size,
+                                self.hparams.num_layers,
                                 batch_first=True,
                                 bidirectional=True,
-                                dropout=self.drop)
-        elif self.rnn_type == 'cnn':
-            self.word2cnn = nn.Linear(self.embedding_size, self.hidden_size * 2)
+                                dropout=self.hparams.dropout)
+        elif self.hparams.rnn_type == 'cnn':
+            self.word2cnn = nn.Linear(self.hparams.embedding_size, self.hparams.hidden_size * 2)
             self.cnn_list = list()
             for _ in range(self.num_layers):
-                self.cnn_list.append(nn.Conv1d(self.hidden_size * 2, self.hidden_size * 2, kernel_size=3, padding=1, ))
+                self.cnn_list.append(nn.Conv1d(self.hparams.hidden_size * 2,
+                                               self.hparams.hidden_size * 2,
+                                               kernel_size=3,
+                                               padding=1, ))
                 self.cnn_list.append(nn.ReLU())
-                self.cnn_list.append(nn.Dropout(self.drop))
-                self.cnn_list.append(nn.BatchNorm1d(self.hidden_size * 2))
+                self.cnn_list.append(nn.Dropout(self.hparams.dropout))
+                self.cnn_list.append(nn.BatchNorm1d(self.hparams.hidden_size * 2))
             self.cnn = nn.Sequential(*self.cnn_list)
-        elif self.rnn_type == 'qrnn':
+        elif self.hparams.rnn_type == 'qrnn':
             raise NotImplementedError("Isn't implemented yet")
-        if self.use_crf:
-            self.linear = nn.Linear(self.hidden_size * 2, self.num_classes + 2)
-            self.crf = CRF(self.num_classes)
+        if self.hparams.use_crf:
+            self.linear = nn.Linear(self.hparams.hidden_size * 2, self.num_classes)
+            self.crf = ConditionalRandomField(num_tags=self.num_classes)
         else:
-            self.linear = nn.Linear(self.hidden_size * 2, self.num_classes)
+            self.linear = nn.Linear(self.hparams.hidden_size * 2, self.num_classes)
 
         self.f1_metric = pl.metrics.F1(num_classes=self.num_classes, average='macro', )
 
@@ -88,14 +90,15 @@ class NerRNN(pl.LightningModule):
         # Set initial states
         emb = self.embedding(x)
         emb = self.dropout(emb)
-        if self.rnn_type == 'lstm':
+        if self.hparams.rnn_type == 'lstm':
             output, self.hidden = self.lstm(emb)
-        elif self.rnn_type == 'cnn':
+        elif self.hparams.rnn_type == 'cnn':
             to_cnn = torch.tanh(self.word2cnn(emb)).transpose(2, 1).contiguous()
             output = self.cnn(to_cnn).transpose(1, 2).contiguous()
-        if self.use_crf:
+        if self.hparams.use_crf:
             x_mask = x.eq(0).eq(0)
-            scores, y_pred = self.crf._viterbi_decode(output, x_mask)
+            y_pred = self.linear(output)
+            y_pred = torch.FloatTensor(self.crf.viterbi_tags(y_pred, x_mask))
         else:
             y_pred = self.linear(output)
 
@@ -105,9 +108,9 @@ class NerRNN(pl.LightningModule):
         sent, tags = batch
 
         outputs = self.forward(sent)
-        if self.use_crf:
+        if self.hparams.use_crf:
             mask_sent = sent.eq(0).eq(0)
-            loss = self.crf.neg_log_likelihood_loss(outputs, mask_sent, tags)
+            loss = self.crf.forward(outputs, tags, mask_sent)
         else:
             loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
         self.log('train_loss', loss)
@@ -116,7 +119,11 @@ class NerRNN(pl.LightningModule):
     def validation_step(self, data_batch, batch_nb):
         sent, tags = data_batch
         outputs = self.forward(sent)
-        loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
+        if self.hparams.use_crf:
+            mask_sent = sent.eq(0).eq(0)
+            loss_val = self.crf.forward(outputs, tags, mask_sent)
+        else:
+            loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
         mask = tags.eq(0).eq(0)
         predicted = outputs.argmax(2)
         f1_score = self.f1_metric(predicted[mask], tags[mask])
@@ -129,5 +136,10 @@ class NerRNN(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters())
+        optimizer = torch.optim.AdamW(self.parameters(),
+                                      lr=self.hparams.learning_rate,
+                                      betas=(self.hparams.adam_beta1, self.hparams.adam_beta2),
+                                      eps=self.hparams.adam_eps,
+                                      weight_decay=self.hparams.weight_decay,
+                                      )
         return optimizer

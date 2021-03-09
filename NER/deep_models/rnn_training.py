@@ -8,7 +8,6 @@ from sklearn.metrics import confusion_matrix
 
 from NER.data_load import get_ner_dataset
 from ner_dataset import NerDataSet, padded_data_loader
-from transformer import NERTransformer
 from rnn_models import NerRNN
 
 
@@ -16,11 +15,10 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--run_name", type=str, default="default")
     parser.add_argument("--log_dir", type=str, default="lightning_logs")
-    parser.add_argument("--max_epochs", type=int, default=30)
+    parser.add_argument("--max_epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--gpus", type=int, default=1)
-    parser = NERTransformer.add_model_specific_args(parser)
-
+    parser = NerRNN.add_model_specific_args(parser)
     args = parser.parse_args()
 
     sent, tags = get_ner_dataset()
@@ -29,7 +27,7 @@ if __name__ == '__main__':
     train_loader = padded_data_loader(data=train_set, batch_size=args.batch_size, workers=0)
     test_loader = padded_data_loader(data=test_set, batch_size=args.batch_size, workers=0)
 
-    model = NERTransformer(len(ds.vocab), len(ds.tag_vocab), **vars(args))
+    model = NerRNN(len(ds.vocab), len(ds.tag_vocab), **vars(args))
     logger = pl.loggers.TensorBoardLogger(args.log_dir, name=args.run_name)
     trainer = pl.Trainer.from_argparse_args(args, logger=logger)
     trainer.fit(model, train_loader, test_loader)

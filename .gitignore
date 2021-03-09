@@ -9,3 +9,4 @@ embedding/tags_titles.csv
 embedding/texts_titles.csv
 NER/__pycache__/
 NER/deep_models/lightning_logs
+NER/lightning_logs
