@@ -40,7 +40,7 @@ class NERTransformer(pl.LightningModule):
         self.save_hyperparameters()
         self.vocab_size = vocab_size
         self.num_classes = num_classes
-
+        self.embedding = nn.Embedding(vocab_size, self.hparams.model_dim)
         self.pos_enc = PositionalEncoding(self.hparams.model_dim, self.hparams.dropout)
         self.layers = get_clones(EncoderLayer(self.hparams.model_dim, self.hparams.num_heads, self.hparams.dropout),
                                  self.hparams.num_layers)
@@ -51,7 +51,7 @@ class NERTransformer(pl.LightningModule):
     def forward(self, x):
         embedding = self.embedding(x)
         embedding = self.pos_enc(embedding)
-        for i in range(self.num_layers):
+        for i in range(self.hparams.num_layers):
             embedding = self.layers[i](embedding)
 
         norm_embedding = self.norm(embedding)
