@@ -10,9 +10,10 @@ embedding/texts_titles.csv
 NER/__pycache__/
 NER/deep_models/lightning_logs
 NER/lightning_logs
-spacy/model
-spacy/config.cfg
-spacy/dev.spacy
-spacy/train.spacy
-spacy/dev.tsv
-spacy/train.tsv
+NER/spacy/model
+NER/spacy/config.cfg
+NER/spacy/dev.spacy
+NER/spacy/train.spacy
+NER/spacy/dev.tsv
+NER/spacy/train.tsv
+OCR/data
