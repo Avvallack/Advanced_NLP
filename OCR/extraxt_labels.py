@@ -54,10 +54,10 @@ def get_best_match(query, corpus, step=4, flex=3, case_sensitive=False, verbose=
         match_values = []
 
         m = 0
-        while m + qlen - step <= len(corpus):
-            match_values.append(_match(query, corpus[m : m-1+qlen]))
+        while m + query_len - step <= len(corpus):
+            match_values.append(_match(query, corpus[m: m-1+query_len]))
             if verbose:
-                print(query, "-", corpus[m: m + qlen], _match(query, corpus[m: m + qlen]))
+                print(query, "-", corpus[m: m + query_len], _match(query, corpus[m: m + query_len]))
             m += step
 
         return match_values
@@ -71,7 +71,7 @@ def get_best_match(query, corpus, step=4, flex=3, case_sensitive=False, verbose=
         # bp_* is synonym for 'Best Position Left/Right' and are adjusted
         # to optimize bmv_*
         p_l, bp_l = [pos] * 2
-        p_r, bp_r = [pos + qlen] * 2
+        p_r, bp_r = [pos + query_len] * 2
 
         # bmv_* are declared here in case they are untouched in optimization
         bmv_l = match_values[p_l // step]
@@ -105,15 +105,15 @@ def get_best_match(query, corpus, step=4, flex=3, case_sensitive=False, verbose=
                 print("rl: -- value: %f -- snippet: %s" % (rl, corpus[p_l: p_r - f]))
                 print("rr: -- value: %f -- snippet: %s" % (rl, corpus[p_l: p_r + f]))
 
-        return bp_l, bp_r, _match(query, corpus[bp_l : bp_r])
+        return bp_l, bp_r, _match(query, corpus[bp_l: bp_r])
 
     if not case_sensitive:
         query = query.lower()
         corpus = corpus.lower()
 
-    qlen = len(query)
+    query_len = len(query)
 
-    if flex >= qlen/2:
+    if flex >= query_len/2:
         print("Warning: flex exceeds length of query / 2. Setting to default.")
         flex = 3
 
