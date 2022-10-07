@@ -2,7 +2,7 @@ import pandas as pd
 
 
 def get_ner_dataset():
-    df = pd.read_csv('https://dl.dropboxusercontent.com/s/tlijezgr8tnpeym/ner_dataset.csv?dl=0',
+    df = pd.read_csv('https://dl.dropboxusercontent.com/s/3bnnbrx9bu0tlhj/ner_dataset.csv?dl=0',
                      header=0,
                      encoding='latin')
 

@@ -1,0 +1,9 @@
+numpy~=1.23.3
+pandas~=1.5.0
+scipy~=1.9.1
+scikit-learn~=1.1.2
+torch~=1.12.1
+torchmetrics~=0.9.3
+tqdm~=4.64.1
+pytorch-crf~=0.7.2
+pytorch-lightning~=1.7.7

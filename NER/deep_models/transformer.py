@@ -1,10 +1,13 @@
 import torch
 import copy
 import pytorch_lightning as pl
+import torchmetrics as tm
 from collections import OrderedDict
 from argparse import ArgumentParser
 from torch import nn
 from torch.nn import functional as F
+from torchcrf import CRF
+
 from attention_layer import MultiHeadAttention, FeedForward, PositionalEncoding
 
 
@@ -46,7 +49,10 @@ class NERTransformer(pl.LightningModule):
                                  self.hparams.num_layers)
         self.norm = nn.LayerNorm(self.hparams.model_dim)
         self.linear = nn.Linear(self.hparams.model_dim, num_classes)
-        self.f1_metric = pl.metrics.F1(num_classes=self.num_classes, average='macro', )
+        if self.hparams.use_crf:
+            self.crf = CRF(num_tags=self.num_classes, batch_first=True)
+
+        self.f1_metric = tm.F1Score(num_classes=self.num_classes, average='macro', )
 
     def forward(self, x):
         embedding = self.embedding(x)
@@ -61,16 +67,27 @@ class NERTransformer(pl.LightningModule):
     def training_step(self, batch, batch_idx, pad_index=0):
         sent, tags = batch
         outputs = self.forward(sent)
-        loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=pad_index)
+        if self.hparams.use_crf:
+            mask_sent = sent.eq(0).eq(0)
+            loss = -self.crf.forward(outputs, tags, mask_sent)
+        else:
+            loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=pad_index)
+
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx, pad_index=0):
         sent, tags = batch
         outputs = self.forward(sent)
-        loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=pad_index)
+        if self.hparams.use_crf:
+            mask_sent = sent.eq(0).eq(0)
+            loss_val = -self.crf.forward(outputs, tags, mask_sent)
+            predicted = torch.tensor(self.crf.decode(outputs))
+        else:
+            loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=pad_index)
+            predicted = outputs.argmax(2)
         mask = tags.eq(0).eq(0)
-        predicted = outputs.argmax(2)
+
         f1_score = self.f1_metric(predicted[mask], tags[mask])
 
         output = OrderedDict({
@@ -101,5 +118,6 @@ class NERTransformer(pl.LightningModule):
         parser.add_argument("--adam_beta1", type=float, default=0.95)
         parser.add_argument("--adam_beta2", type=float, default=0.99)
         parser.add_argument("--dropout", type=float, default=0.1)
+        parser.add_argument("--use_crf", type=bool, default=False)
 
         return parser

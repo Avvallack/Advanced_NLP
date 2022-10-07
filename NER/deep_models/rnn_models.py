@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+import torchmetrics as tm
 from collections import OrderedDict
 from argparse import ArgumentParser
-from allennlp.modules import ConditionalRandomField
+from torchcrf import CRF
 
 
 class BiLSTM(nn.Module):
@@ -79,12 +80,10 @@ class NerRNN(pl.LightningModule):
         elif self.hparams.rnn_type == 'qrnn':
             raise NotImplementedError("Isn't implemented yet")
         if self.hparams.use_crf:
-            self.linear = nn.Linear(self.hparams.hidden_size * 2, self.num_classes)
-            self.crf = ConditionalRandomField(num_tags=self.num_classes)
-        else:
-            self.linear = nn.Linear(self.hparams.hidden_size * 2, self.num_classes)
+            self.crf = CRF(num_tags=self.num_classes, batch_first=True)
+        self.linear = nn.Linear(self.hparams.hidden_size * 2, self.num_classes)
 
-        self.f1_metric = pl.metrics.F1(num_classes=self.num_classes, average='macro', )
+        self.f1_metric = tm.F1Score(num_classes=self.num_classes, average='macro', )
 
     def forward(self, x):
         # Set initial states
@@ -95,12 +94,7 @@ class NerRNN(pl.LightningModule):
         elif self.hparams.rnn_type == 'cnn':
             to_cnn = torch.tanh(self.word2cnn(emb)).transpose(2, 1).contiguous()
             output = self.cnn(to_cnn).transpose(1, 2).contiguous()
-        if self.hparams.use_crf:
-            x_mask = x.eq(0).eq(0)
-            y_pred = self.linear(output)
-            y_pred = torch.FloatTensor(self.crf.viterbi_tags(y_pred, x_mask))
-        else:
-            y_pred = self.linear(output)
+        y_pred = self.linear(output)
 
         return y_pred
 
@@ -110,7 +104,7 @@ class NerRNN(pl.LightningModule):
         outputs = self.forward(sent)
         if self.hparams.use_crf:
             mask_sent = sent.eq(0).eq(0)
-            loss = self.crf.forward(outputs, tags, mask_sent)
+            loss = -self.crf.forward(outputs, tags, mask_sent)
         else:
             loss = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
         self.log('train_loss', loss)
@@ -120,12 +114,14 @@ class NerRNN(pl.LightningModule):
         sent, tags = data_batch
         outputs = self.forward(sent)
         if self.hparams.use_crf:
-            mask_sent = sent.eq(0).eq(0)
-            loss_val = self.crf.forward(outputs, tags, mask_sent)
+            mask_sent = sent.eq(0).eq(0).type(torch.ByteTensor)
+            loss_val = -self.crf.forward(outputs, tags, mask_sent)
+            predicted = torch.tensor(self.crf.decode(outputs))
         else:
             loss_val = F.cross_entropy(torch.flatten(outputs, 0, 1), torch.flatten(tags, 0, 1), ignore_index=0)
+            predicted = outputs.argmax(2)
+
         mask = tags.eq(0).eq(0)
-        predicted = outputs.argmax(2)
         f1_score = self.f1_metric(predicted[mask], tags[mask])
 
         output = OrderedDict({

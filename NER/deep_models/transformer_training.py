@@ -18,7 +18,8 @@ if __name__ == '__main__':
     parser.add_argument("--log_dir", type=str, default="lightning_logs")
     parser.add_argument("--max_epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--accelerator", type=str, default="cpu")
+    parser.add_argument("--num_workers", type=int, default=8)
     parser = NERTransformer.add_model_specific_args(parser)
     # parse known
     args = parser.parse_args()
